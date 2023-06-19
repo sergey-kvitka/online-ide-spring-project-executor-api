@@ -1,6 +1,6 @@
 package com.kvitka.idejarexecutor.dto;
 
-import com.kvitka.idejarexecutor.dto.enums.ResultStatus;
+import com.kvitka.idejarexecutor.enums.ResultStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,4 +15,5 @@ public class ExecutionResult {
     private Boolean hasExitCode;
     private ResultStatus status;
     private List<String> output;
+    private Long executionTime;
 }

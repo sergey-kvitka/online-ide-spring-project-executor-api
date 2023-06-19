@@ -1,2 +1,10 @@
 server:
   port: 8123
+
+path:
+  projects: src\execProjects
+  maven:
+    3-8-4: src\main\resources\maven\3.8.4\bin\mvn.cmd
+  docker:
+    docker: C:\Program Files\Docker\Docker\resources\bin\docker.exe
+    docker-compose: C:\Program Files\Docker\Docker\resources\bin\docker-compose.exe

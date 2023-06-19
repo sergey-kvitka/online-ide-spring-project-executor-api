@@ -1,4 +1,4 @@
-package com.kvitka.idejarexecutor.dto.enums;
+package com.kvitka.idejarexecutor.enums;
 
 public enum ResultStatus {
     PREPARATION_ERROR,

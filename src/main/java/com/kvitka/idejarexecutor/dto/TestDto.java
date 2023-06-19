@@ -7,10 +7,11 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
-public class JarExecutionResult {
-    int exitCode;
-    List<String> output;
-    Long executionTime;
+@AllArgsConstructor
+public class TestDto {
+    private List<FileDto> files;
+    private String artifactId;
+    private String groupId;
+    private String port;
 }

@@ -4,7 +4,8 @@ import com.kvitka.idejarexecutor.dto.ExecutionRequest;
 import com.kvitka.idejarexecutor.dto.ExecutionResult;
 import com.kvitka.idejarexecutor.dto.FileDto;
 import com.kvitka.idejarexecutor.dto.JarExecutionResult;
-import com.kvitka.idejarexecutor.dto.enums.ResultStatus;
+import com.kvitka.idejarexecutor.enums.ResultStatus;
+import lombok.RequiredArgsConstructor;
 import org.apache.tomcat.util.http.fileupload.FileUtils;
 import org.springframework.stereotype.Service;
 
@@ -15,15 +16,18 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class JarExecutionService {
 
     private static final String PROJECT_PATH = System.getProperty("user.dir");
     private static final String EXEC_PROJECTS_DIR = "src\\execProjects";
-    private static final String BACKSLASH = "\\";
 
     private static final String MANIFEST_NAME = "manifest.mf";
+
+    private final FileService fileService;
 
     public ExecutionResult exec(ExecutionRequest execRequest) throws IOException, InterruptedException {
         String projectId = execRequest.getProjectId();
@@ -47,21 +51,28 @@ public class JarExecutionService {
             else if (!projectRootPackageName.equals(packages[0])) throw new IllegalArgumentException(
                     "All java files must be located in one top-level package (e.g. \"com\")");
 
-            createJavaFile(projectPath, path, file.getContent());
+            fileService.createFile(projectPath, path, file.getContent());
         }
 
         List<String> compilationErrors = compileJavaFiles(projectPath);
         if (!compilationErrors.isEmpty()) return new ExecutionResult(0, false,
-                ResultStatus.COMPILE_ERROR, compilationErrors);
+                ResultStatus.COMPILE_ERROR, compilationErrors, 0L);
 
         createManifest(projectPath, execRequest.getMainClass());
         createJar(projectPath, projectRootPackageName, projectId);
         JarExecutionResult result = executeJar(projectPath, projectId, execRequest.getArgs());
 
-        clearProjectDir(projectDir.toFile());
+        try {
+            clearProjectDir(projectDir.toFile());
+        } catch (IOException ignored) {
+        }
         int exitCode = result.getExitCode();
-        return new ExecutionResult(exitCode, true,
-                exitCode == 0 ? ResultStatus.OK : ResultStatus.EXECUTION_ERROR, result.getOutput());
+        return new ExecutionResult(
+                exitCode,
+                true,
+                exitCode == 0 ? ResultStatus.OK : ResultStatus.EXECUTION_ERROR,
+                result.getOutput(),
+                result.getExecutionTime());
     }
 
     private void clearProjectDir(File projectDir) throws IOException {
@@ -70,25 +81,8 @@ public class JarExecutionService {
 
     private Path createProjectDir(String projectId) throws IOException {
         return Files.createDirectories(Paths.get(
-                join(PROJECT_PATH, EXEC_PROJECTS_DIR, "project_" + projectId)));
-    }
-
-    private void createJavaFile(String projectPath, String contentPath, List<String> content) throws IOException {
-        ArrayList<String> packages = new ArrayList<>(List.of(contentPath.split("\\\\")));
-        int last = packages.size() - 1;
-        if (!packages.get(last).contains(".java"))
-            throw new IllegalArgumentException("Not .java file (%s)".formatted(contentPath));
-        packages.remove(last);
-        String contentPathFolder = String.join(BACKSLASH, packages);
-        Files.createDirectories(Paths.get(join(projectPath, contentPathFolder)));
-
-        File file = new File(join(projectPath, contentPath));
-        BufferedWriter writer = new BufferedWriter(new FileWriter(file.getAbsolutePath()));
-        for (String line : content) {
-            writer.write(line);
-            writer.newLine();
-        }
-        writer.close();
+                fileService.join(PROJECT_PATH, EXEC_PROJECTS_DIR, "project_" + projectId
+                        + '_' + UUID.randomUUID())));
     }
 
     private List<String> compileJavaFiles(String projectPath) throws IOException, InterruptedException {
@@ -110,7 +104,7 @@ public class JarExecutionService {
     }
 
     private void createManifest(String projectPath, String mainClass) throws IOException {
-        File manifest = new File(join(projectPath, MANIFEST_NAME));
+        File manifest = new File(fileService.join(projectPath, MANIFEST_NAME));
         String manifestPath = manifest.getAbsolutePath();
         BufferedWriter writer = new BufferedWriter(new FileWriter(manifestPath));
         for (String line : new String[]{"Manifest-Version: 1.0", "Main-Class: %s".formatted(mainClass)}) {
@@ -145,6 +139,7 @@ public class JarExecutionService {
         processBuilder.directory(new File(projectPath));
         processBuilder.redirectErrorStream(true);
         Process process = processBuilder.start();
+        long start = System.nanoTime();
 
         InputStream inputStream = process.getInputStream();
         Scanner scanner = new Scanner(inputStream).useDelimiter("\n");
@@ -152,13 +147,9 @@ public class JarExecutionService {
         while (scanner.hasNext()) output.add(removeCarriageReturnInStringEnd(scanner.next()));
         scanner.close();
         int status = process.waitFor();
+        long end = System.nanoTime();
         process.destroy();
-        new Object();
-        return new JarExecutionResult(status, output);
-    }
-
-    private String join(String... strings) {
-        return String.join(BACKSLASH, strings);
+        return new JarExecutionResult(status, output, (end - start) / 1_000_000);
     }
 
     private String removeCarriageReturnInStringEnd(String string) {
